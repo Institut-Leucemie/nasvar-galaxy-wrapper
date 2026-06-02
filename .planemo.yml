@@ -1,0 +1,4 @@
+# ~/nasvar-galaxy-wrapper/.planemo.yml
+conda_dependency_resolution: true
+conda_use_local: true
+conda_prefix: /home/galaxy/tool_dependencies/_conda
