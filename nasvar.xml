@@ -1,0 +1,191 @@
+<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy0" profile="26.0">
+    <description>tumor-only long-read variant calling (SNV / CNV / fusions / ITD / karyotype)</description>
+
+    <macros>
+        <token name="@TOOL_VERSION@">1.1.0</token>
+    </macros>
+
+    <requirements>
+        <!-- Résolu via le canal conda local sur usegalaxy (conda_use_local: true) -->
+        <requirement type="package" version="@TOOL_VERSION@">nasvar</requirement>
+    </requirements>
+
+    <command detect_errors="exit_code"><![CDATA[
+mkdir -p out &&
+
+nasvar pipeline
+    '$bam'
+    '$repeats'
+    '$enriched'
+    '$sites'
+    '$targets'
+    '${fasta_source.fields.path}'
+    '$gff'
+    out/sample
+    --config '$config'
+    --reference '$reference'
+    --gc_correction loess
+    --force
+    --log_file '$log'
+    #if $blast_ratio:
+        --blast_ratio $blast_ratio
+    #end if
+    --min_depth $advanced.min_depth
+    --plot_y_percentile $advanced.plot_y_percentile
+    &&
+
+## breakpoints.fa n'est produit que si des fusions sont détectées ET le BAM est indexé.
+## from_work_dir exige le fichier ; on garantit son existence (vide = pas de fusions).
+## Comportement choisi pour sa prédictibilité ; alternative discover_datasets à
+## évaluer ensemble si tu préfères ne pas créer de fichier vide en sortie.
+{ test -f out/sample.breakpoints.fa || touch out/sample.breakpoints.fa; }
+    ]]></command>
+
+    <inputs>
+        <!-- ============== per-sample ============== -->
+        <param name="bam" type="data" format="bam"
+               label="Aligned BAM (tumor)"
+               help="Sorted and indexed BAM/CRAM. Galaxy provides the .bai/.crai index automatically alongside the dataset."/>
+
+        <!-- ============== reference genome (cohérent : FASTA + GFF + repeats + sites + reference JSON) ==============
+             Choix discuté : seule la FASTA passe par all_fasta (convention Galaxy standard).
+             Les 4 autres sont des data inputs mutables — la cohérence entre eux est sous
+             la responsabilité de qui peuple la data library. -->
+        <param name="fasta_source" type="select"
+               label="Reference genome (FASTA, indexed)"
+               help="Admin-installed reference genome from the all_fasta data table.">
+            <options from_data_table="all_fasta">
+                <validator type="no_options"
+                           message="No indexed reference genome is registered in this Galaxy. Ask the admin to install one via the data manager."/>
+            </options>
+        </param>
+        <param name="gff" type="data" format="gff3"
+               label="Gene annotations (GFF3)"
+               help="Must match the chosen reference genome coordinates."/>
+        <param name="repeats" type="data" format="bed"
+               label="Repetitive regions (BED)"
+               help="Used for coverage masking and BAF site filtering."/>
+        <param name="sites" type="data" format="tabular"
+               label="MAF sites (TSV)"
+               help="Tab-separated SNP positions for BAF: CHR POS REF ALT."/>
+        <param name="reference" type="data" format="json"
+               label="Reference genome configuration (JSON)"
+               help="Centromere and PAR coordinates for the chosen reference genome (e.g. T2T-CHM13v2.0)."/>
+
+        <!-- ============== panel (cohérent : enriched + targets + pipeline config) ============== -->
+        <param name="enriched" type="data" format="bed"
+               label="Enriched regions (BED)"
+               help="Regions targeted by adaptive sampling on the sequencer."/>
+        <param name="targets" type="data" format="bed"
+               label="Gene targets (BED)"
+               help="Enriched genes of interest for fusion calling (no padding)."/>
+        <param name="config" type="data" format="json"
+               label="Pipeline configuration (JSON)"
+               help="Panel-specific: gene list, thresholds, SNV transcripts, one-sided genes."/>
+
+        <!-- ============== clinical optional ============== -->
+        <param name="blast_ratio" type="float" optional="true"
+               min="0" max="1"
+               label="Tumor fraction (blast ratio)"
+               help="Optional. Estimated tumor fraction in [0.0, 1.0] for copy number adjustment. Leave empty for no adjustment."/>
+
+        <!-- ============== advanced ============== -->
+        <section name="advanced" title="Advanced options" expanded="false">
+            <param name="min_depth" type="integer" value="20" min="1"
+                   label="Minimum read depth at MAF site"
+                   help="Sites below this depth are treated as spacers in the BAF plot. nasvar default: 20."/>
+            <param name="plot_y_percentile" type="float" value="0.95" min="0" max="1"
+                   label="Karyotype plot y-axis percentile"
+                   help="Per-segment percentile for the karyotype plot y-axis limit. nasvar default: 0.95."/>
+        </section>
+    </inputs>
+
+    <outputs>
+        <data name="result_json" format="json"
+              from_work_dir="out/sample.result.json"
+              label="${tool.name} on ${on_string}: result (JSON)"/>
+        <data name="coverage" format="tabular"
+              from_work_dir="out/sample.coverage.tsv"
+              label="${tool.name} on ${on_string}: coverage"/>
+        <data name="coverage_gc" format="tabular"
+              from_work_dir="out/sample.coverage.gc_adjusted.tsv"
+              label="${tool.name} on ${on_string}: coverage (GC-adjusted)"/>
+        <data name="maf" format="tabular"
+              from_work_dir="out/sample.maf"
+              label="${tool.name} on ${on_string}: MAF"/>
+        <data name="karyotype_svg" format="svg"
+              from_work_dir="out/sample.karyotype.gc_corrected.svg"
+              label="${tool.name} on ${on_string}: karyotype (GC-corrected)"/>
+        <data name="karyotype_baf_svg" format="svg"
+              from_work_dir="out/sample.karyotype_baf.gc_corrected.svg"
+              label="${tool.name} on ${on_string}: karyotype + BAF"/>
+        <data name="gc_vs_coverage_svg" format="svg"
+              from_work_dir="out/sample.gc_vs_coverage.svg"
+              label="${tool.name} on ${on_string}: GC vs coverage"/>
+        <data name="breakpoints_fa" format="fasta"
+              from_work_dir="out/sample.breakpoints.fa"
+              label="${tool.name} on ${on_string}: fusion breakpoint consensus (empty if no fusions)"/>
+        <data name="log" format="txt"
+              label="${tool.name} on ${on_string}: log"/>
+    </outputs>
+
+    <tests>
+        <!-- TODO: minimal smoke test once a downsized test dataset is available.
+             nasvar v1.1.0 ne livre pas de test-data public ; à constituer toi-même
+             (BAM réduit à un locus du panel + références minimales). -->
+    </tests>
+
+    <help><![CDATA[
+**nasvar pipeline** — full tumor-only long-read variant calling pipeline.
+
+Detects SNVs, CNVs, gene fusions, internal tandem duplications, and infers karyotypes
+from aligned BAM/CRAM files produced by Oxford Nanopore PromethION sequencing,
+typically with adaptive sampling on a targeted gene panel.
+
+This wrapper was developed for clinical-research use on B-cell acute lymphoblastic leukemia
+(B-ALL) in collaboration with the Institut de la Leucémie (Paris).
+
+----
+
+**Inputs grouped by coherence**
+
+- **Per-sample**: aligned tumor BAM.
+- **Reference-genome bundle**: FASTA (admin-installed), GFF3, repeats BED, MAF sites TSV,
+  reference JSON. All five must describe the *same* reference genome — mismatch will
+  silently produce wrong calls.
+- **Panel bundle**: enriched BED, targets BED, pipeline JSON. All three must describe the
+  *same* analysis panel.
+
+**Outputs**
+
+- ``result.json`` — unified JSON with all variant calls, QC, and metadata
+- ``coverage.tsv``, ``coverage.gc_adjusted.tsv`` — binned read depth (raw + GC-corrected)
+- ``maf`` — minor allele frequencies at SNP sites
+- ``breakpoints.fa`` — fusion breakpoint consensus sequences (empty if no fusions detected)
+- ``karyotype.gc_corrected.svg`` — karyotype coverage plot
+- ``karyotype_baf.gc_corrected.svg`` — karyotype + BAF combined plot
+- ``gc_vs_coverage.svg`` — GC bias diagnostic plot
+- ``log`` — nasvar execution log
+
+----
+
+**Upstream**
+
+https://github.com/jwanglab/nasvar — v1.1.0, commit eb285440957124d1d3c65aee0ba0aa291726313a
+
+**License (upstream)**
+
+UNC Ref. 24-0059 Non-commercial. See the LICENSE file in the upstream repository.
+    ]]></help>
+
+    <citations>
+        <citation type="bibtex">
+@misc{nasvar,
+  author       = {Zhao, Acacia and Wang, Jeremy},
+  title        = {nasvar: Nanopore Adaptive Sample VARiant caller},
+  howpublished = {\url{https://github.com/jwanglab/nasvar}},
+  note         = {Version 1.1.0}
+}
+        </citation>
+    </citations>
+</tool>
