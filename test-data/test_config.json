@@ -27,7 +27,7 @@
   "focal_depth": {
     "plots": [
       {
-        "region": "chrX_test:0-500000",
+        "region": "chrX_test:1-500000",
         "output": "chrX_test_PAR1_covg.png",
         "annotations": [],
         "binsize": 10000
