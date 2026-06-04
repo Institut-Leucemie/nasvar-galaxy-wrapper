@@ -1,0 +1,11 @@
+<?xml version="1.0"?>
+<tables>
+    <!-- Test-only data table configuration loaded by planemo (the .test
+         convention; the .sample equivalent documents the production setup
+         which is admin-installed via the Galaxy data manager).
+         Points to test-data/all_fasta.loc which ships with the test slice. -->
+    <table name="all_fasta" comment_char="#">
+        <columns>value, dbkey, name, path</columns>
+        <file path="${__HERE__}/test-data/all_fasta.loc"/>
+    </table>
+</tables>
