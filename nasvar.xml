@@ -43,37 +43,17 @@ nasvar pipeline
 ##  - karyotype.* / coverage.gc_adjusted.tsv : only if enough BAF data
 ##  - gc_vs_coverage*.svg       : same
 ## from_work_dir requires the file; we guarantee existence (empty = not produced).
-## Predictable behaviour, and lets the wrapper run cleanly on samples with
-## insufficient coverage.
-for f in \
-    out/sample.breakpoints.fa \
-    out/sample.coverage.gc_adjusted.tsv \
-    out/sample.karyotype.gc_corrected.svg \
-    out/sample.karyotype_baf.gc_corrected.svg \
-    out/sample.gc_vs_coverage.svg \
-    out/sample.gc_vs_coverage.gc_corrected.svg; do
-    test -f "\$f" || touch "\$f"
-done &&
+## Written on a single line: Cheetah collapses newlines in <command> CDATA to
+## spaces, so for-loop syntax must use explicit ';' separators.
+for f in out/sample.breakpoints.fa out/sample.coverage.gc_adjusted.tsv out/sample.karyotype.gc_corrected.svg out/sample.karyotype_baf.gc_corrected.svg out/sample.gc_vs_coverage.svg out/sample.gc_vs_coverage.gc_corrected.svg; do test -f "\$f" || touch "\$f"; done &&
 
 ## Per-gene focal coverage SVGs are data-driven by the pipeline_config JSON
 ## (one SVG per "plots" entry) -- neither their count nor their naming is known
 ## at wrapper-writing time. We isolate them in focal_plots/ by moving any SVG
 ## that is not a named pipeline output; the Galaxy collection then discovers
 ## them via discover_datasets.
-for f in out/sample.*.svg; do
-    base=\$(basename "\$f")
-    case "\$base" in
-        sample.karyotype.gc_corrected.svg|\
-        sample.karyotype_baf.gc_corrected.svg|\
-        sample.gc_vs_coverage.svg|\
-        sample.gc_vs_coverage.gc_corrected.svg|\
-        sample.karyotype.svg)
-            ;;
-        *)
-            mv "\$f" out/focal_plots/
-            ;;
-    esac
-done
+## Single-line for the same reason: Cheetah collapses CDATA newlines to spaces.
+for f in out/sample.*.svg; do base=\$(basename "\$f"); case "\$base" in sample.karyotype.gc_corrected.svg|sample.karyotype_baf.gc_corrected.svg|sample.gc_vs_coverage.svg|sample.gc_vs_coverage.gc_corrected.svg|sample.karyotype.svg) ;; *) mv "\$f" out/focal_plots/ ;; esac; done
     ]]></command>
 
     <inputs>
