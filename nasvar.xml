@@ -27,14 +27,14 @@ nasvar pipeline
     out/sample
     --config '$config'
     --reference '$reference'
-    --gc_correction loess
+    --gc-correction loess
     --force
-    --log_file '$log'
+    --log-file '$log'
     #if $blast_ratio:
-        --blast_ratio $blast_ratio
+        --blast-ratio $blast_ratio
     #end if
-    --min_depth $advanced.min_depth
-    --plot_y_percentile $advanced.plot_y_percentile
+    --min-depth $advanced.min_depth
+    --plot-y-percentile $advanced.plot_y_percentile
     &&
 
 ## breakpoints.fa n'est produit que si des fusions sont détectées ET le BAM
