@@ -179,7 +179,7 @@ done
         <!-- À compléter demain avec le slice IGH/PAR1 d'ADN737-87.
              Squelette laissé en commentaire pour fixer la structure. -->
         <!--
-        <test expect_num_outputs="11">
+        <test expect_num_outputs="13">
             <param name="bam" value="ADN737-87.slice.bam" ftype="bam"/>
             <param name="fasta_source" value="t2t_chm13v2_test"/>
             <param name="gff" value="ucsc_full.slice.gff3" ftype="gff3"/>
