@@ -1,0 +1,72 @@
+{
+  "reference_file": "test_reference.json",
+  "genes": {
+    "cnv": {
+      "focal_genes": [],
+      "exclude_from_baseline": [],
+      "deletion_genes": [],
+      "duplication_genes": []
+    },
+    "itd": {},
+    "snv": {
+      "pathogenic": [],
+      "transcripts": {}
+    },
+    "fusions": {
+      "special_margins": {
+        "CRLF2": 25000,
+        "IGH": 5000
+      },
+      "skip_self_fusions": ["DUX4", "TCR"],
+      "bypass_breakpoint_filter": ["DUX4", "CRLF2"],
+      "blacklist_pairs": [],
+      "one_sided_genes": ["IGH", "IGK", "IGL", "CRLF2"],
+      "one_sided_partners": {}
+    }
+  },
+  "focal_depth": {
+    "plots": [
+      {
+        "region": "chrX_test:0-500000",
+        "output": "chrX_test_PAR1_covg.png",
+        "annotations": [],
+        "binsize": 10000
+      }
+    ]
+  },
+  "thresholds": {
+    "fusions": {
+      "default_margin": 5000,
+      "min_anchor": 500,
+      "min_supporting_reads": 1,
+      "min_breakpoint_reads": 1,
+      "one_sided": {
+        "min_fraction": 0.05
+      }
+    },
+    "snv": {
+      "min_coverage": 5.0,
+      "min_allele_freq": 0.1,
+      "homozygosity_vaf": 0.7,
+      "phasing_ratio": 10
+    },
+    "cnv": {
+      "gene_margin": 50000,
+      "min_supporting_reads": 3,
+      "breakpoint_margin": 50,
+      "min_anchor": 500
+    },
+    "maf": {
+      "min_depth": 5
+    },
+    "coverage": {
+      "bin_size": 50000
+    },
+    "karyotype": {
+      "spread_warning": 0.08,
+      "level_tolerance": 0.3,
+      "maf_peak_diploid": 0.4,
+      "min_maf_sites": 5
+    }
+  }
+}

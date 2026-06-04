@@ -1,0 +1,8 @@
+{
+  "name": "T2T-CHM13v2.0_test_slice",
+  "centromeres": {},
+  "par1": {
+    "chrX_test": [0, 500000]
+  },
+  "par2": {}
+}
