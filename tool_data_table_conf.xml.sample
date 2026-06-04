@@ -1,0 +1,13 @@
+<?xml version="1.0"?>
+<tables>
+    <!-- all_fasta data table used by the nasvar wrapper for reference genome
+         selection (<options from_data_table="all_fasta"/>). In production, the
+         admin populates tool-data/all_fasta.loc with installed reference genomes
+         via the standard Galaxy data manager. For planemo test, the contents
+         come from tool-data/all_fasta.loc.sample which points to the test slice
+         in test-data/. -->
+    <table name="all_fasta" comment_char="#">
+        <columns>value, dbkey, name, path</columns>
+        <file path="tool-data/all_fasta.loc"/>
+    </table>
+</tables>
