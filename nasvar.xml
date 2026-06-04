@@ -6,10 +6,10 @@
     </macros>
 
     <requirements>
-        <!-- Résolu via le canal conda local sur usegalaxy (conda_use_local: true).
-             Le binaire conda est compilé depuis le tag v1.1.0 (commit eb28544) :
-             il ne produit donc PAS les sorties slice.bam/nasvar.zip/pipeline_config.json
-             qu'on observe sur le binaire post-tag /opt/nasvar-v1.1.0/. -->
+        <!-- Resolved via the local conda channel on usegalaxy (conda_use_local: true).
+             The conda binary is built from the v1.1.0 tag (commit eb28544), so it
+             does NOT produce the slice.bam/nasvar.zip/pipeline_config.json outputs
+             observed on the post-tag binary /opt/nasvar-v1.1.0/. -->
         <requirement type="package" version="@TOOL_VERSION@">nasvar</requirement>
     </requirements>
 
@@ -37,16 +37,29 @@ nasvar pipeline
     --plot-y-percentile $advanced.plot_y_percentile
     &&
 
-## breakpoints.fa n'est produit que si des fusions sont détectées ET le BAM
-## est indexé. from_work_dir exige le fichier ; on garantit son existence (vide
-## = pas de fusions). Comportement choisi pour sa prédictibilité.
-{ test -f out/sample.breakpoints.fa || touch out/sample.breakpoints.fa; } &&
+## Guarantee existence of conditional outputs.
+## Several nasvar outputs depend on runtime conditions:
+##  - breakpoints.fa            : only if fusions detected and BAM is indexed
+##  - karyotype.* / coverage.gc_adjusted.tsv : only if enough BAF data
+##  - gc_vs_coverage*.svg       : same
+## from_work_dir requires the file; we guarantee existence (empty = not produced).
+## Predictable behaviour, and lets the wrapper run cleanly on samples with
+## insufficient coverage.
+for f in \
+    out/sample.breakpoints.fa \
+    out/sample.coverage.gc_adjusted.tsv \
+    out/sample.karyotype.gc_corrected.svg \
+    out/sample.karyotype_baf.gc_corrected.svg \
+    out/sample.gc_vs_coverage.svg \
+    out/sample.gc_vs_coverage.gc_corrected.svg; do
+    test -f "\$f" || touch "\$f"
+done &&
 
-## Les SVG de couverture focale par-gène sont data-driven par le pipeline_config
-## JSON (un SVG par entrée \`plots\`) -- ni leur nombre ni leur nommage ne sont
-## connus au moment de l'écriture du wrapper. On les isole dans focal_plots/
-## en déplaçant tout ce qui n'est pas un SVG nommé du pipeline ; la collection
-## Galaxy les découvre ensuite via discover_datasets.
+## Per-gene focal coverage SVGs are data-driven by the pipeline_config JSON
+## (one SVG per "plots" entry) -- neither their count nor their naming is known
+## at wrapper-writing time. We isolate them in focal_plots/ by moving any SVG
+## that is not a named pipeline output; the Galaxy collection then discovers
+## them via discover_datasets.
 for f in out/sample.*.svg; do
     base=\$(basename "\$f")
     case "\$base" in
@@ -69,7 +82,7 @@ done
                label="Aligned BAM (tumor)"
                help="Sorted and indexed BAM/CRAM. Galaxy provides the .bai/.crai index automatically alongside the dataset."/>
 
-        <!-- ============== reference genome (FASTA via all_fasta, le reste en data) ============== -->
+        <!-- ============== reference genome (FASTA via all_fasta, other files as data) ============== -->
         <param name="fasta_source" type="select"
                label="Reference genome (FASTA, indexed)"
                help="Admin-installed reference genome from the all_fasta data table.">
@@ -120,7 +133,7 @@ done
     </inputs>
 
     <outputs>
-        <!-- ============== sorties cliniques principales ============== -->
+        <!-- ============== main clinical outputs ============== -->
         <data name="report_html" format="html"
               from_work_dir="out/sample.report.html"
               label="${tool.name} on ${on_string}: clinical report (HTML)"/>
@@ -131,7 +144,7 @@ done
               from_work_dir="out/sample.result.json"
               label="${tool.name} on ${on_string}: unified result (JSON)"/>
 
-        <!-- ============== données quantitatives ============== -->
+        <!-- ============== quantitative tables ============== -->
         <data name="coverage" format="tabular"
               from_work_dir="out/sample.coverage.tsv"
               label="${tool.name} on ${on_string}: coverage"/>
@@ -142,7 +155,7 @@ done
               from_work_dir="out/sample.maf"
               label="${tool.name} on ${on_string}: MAF"/>
 
-        <!-- ============== plots globaux ============== -->
+        <!-- ============== global plots ============== -->
         <data name="karyotype_svg" format="svg"
               from_work_dir="out/sample.karyotype.gc_corrected.svg"
               label="${tool.name} on ${on_string}: karyotype (GC-corrected)"/>
@@ -156,12 +169,12 @@ done
               from_work_dir="out/sample.gc_vs_coverage.gc_corrected.svg"
               label="${tool.name} on ${on_string}: GC vs coverage (corrected)"/>
 
-        <!-- ============== sorties conditionnelles ============== -->
+        <!-- ============== conditional output ============== -->
         <data name="breakpoints_fa" format="fasta"
               from_work_dir="out/sample.breakpoints.fa"
               label="${tool.name} on ${on_string}: fusion breakpoint consensus (empty if no fusions)"/>
 
-        <!-- ============== collection : SVG de couverture focale par-gène ============== -->
+        <!-- ============== collection: per-gene focal depth SVGs ============== -->
         <collection name="focal_plots" type="list"
                     label="${tool.name} on ${on_string}: focal depth plots">
             <discover_datasets pattern="(?P&lt;designation&gt;.+)\.svg"
@@ -176,37 +189,48 @@ done
     </outputs>
 
     <tests>
-        <!-- À compléter demain avec le slice IGH/PAR1 d'ADN737-87.
-             Squelette laissé en commentaire pour fixer la structure. -->
-        <!--
+        <!-- Minimal "fusion-only" test: validates IGH::CRLF2 detection on a
+             coordinate-recoded slice of ADN737-87 (chr14 IGH + chrX PAR1/CRLF2).
+             Coverage/MAF/karyotype outputs are produced as empty files because
+             nasvar hardcodes a 1Mb coverage bin_size and a 25% unmasked threshold
+             that an 800kb slice cannot meet. Assertions therefore only cover
+             outputs that are structurally produced. -->
         <test expect_num_outputs="13">
-            <param name="bam" value="ADN737-87.slice.bam" ftype="bam"/>
+            <param name="bam" value="test.bam" ftype="bam"/>
             <param name="fasta_source" value="t2t_chm13v2_test"/>
-            <param name="gff" value="ucsc_full.slice.gff3" ftype="gff3"/>
-            <param name="repeats" value="repeats.hs1.slice.bed" ftype="bed"/>
-            <param name="sites" value="maf_sites.slice.tsv" ftype="tabular"/>
-            <param name="reference" value="T2T-CHM13v2.0_reference.slice.json" ftype="json"/>
-            <param name="enriched" value="enriched.slice.bed" ftype="bed"/>
-            <param name="targets" value="targets.slice.bed" ftype="bed"/>
-            <param name="config" value="sls_acute_leukemia_config_1.slice.json" ftype="json"/>
+            <param name="gff" value="test.gff3" ftype="gff3"/>
+            <param name="repeats" value="test_repeats.bed" ftype="bed"/>
+            <param name="sites" value="test_sites.tsv" ftype="tabular"/>
+            <param name="reference" value="test_reference.json" ftype="json"/>
+            <param name="enriched" value="test_enriched.bed" ftype="bed"/>
+            <param name="targets" value="test_targets.bed" ftype="bed"/>
+            <param name="config" value="test_config.json" ftype="json"/>
+            <section name="advanced">
+                <param name="min_depth" value="5"/>
+            </section>
+            <!-- IGH called as gene0_name in at least one fusion (clinical
+                 regression test: IGH::CRLF2 in ADN737-87) -->
             <output name="result_json">
                 <assert_contents>
-                    <has_text text="IGH"/>
+                    <has_text text="&quot;gene0_name&quot;: &quot;IGH&quot;"/>
                     <has_text text="CRLF2"/>
                 </assert_contents>
             </output>
+            <!-- The markdown report must name the fusion explicitly -->
+            <output name="report_md">
+                <assert_contents>
+                    <has_text text="IGH-CRLF2"/>
+                </assert_contents>
+            </output>
+            <!-- breakpoints.fa not empty (fusion consensus) -->
             <output name="breakpoints_fa">
                 <assert_contents>
                     <has_n_lines min="2"/>
                 </assert_contents>
             </output>
-            <output name="report_md">
-                <assert_contents>
-                    <has_text text="IGH::CRLF2"/>
-                </assert_contents>
-            </output>
+            <!-- 1 focal plot generated (chrX_test PAR1 covg) -->
+            <output_collection name="focal_plots" count="1"/>
         </test>
-        -->
     </tests>
 
     <help><![CDATA[
