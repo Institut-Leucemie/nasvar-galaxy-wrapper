@@ -13,53 +13,73 @@
         <requirement type="package" version="@TOOL_VERSION@">nasvar</requirement>
     </requirements>
 
-    <command detect_errors="exit_code"><![CDATA[
-mkdir -p out out/focal_plots &&
+    <configfiles>
+        <configfile name="run_pipeline"><![CDATA[
+#!/usr/bin/env bash
+set -euo pipefail
+shopt -s nullglob
 
-## Galaxy stores the BAM index in its metadata directory, not next to the .dat.
-## nasvar requires the .bai alongside the BAM (the v1.1.0 tag does not build
-## the index inline -- that feature was added post-tag). We symlink explicitly.
-ln -sf '$bam' input.bam &&
-ln -sf '$bam.metadata.bam_index' input.bam.bai &&
+mkdir -p out out/focal_plots
 
-nasvar pipeline
-    input.bam
-    '$repeats'
-    '$enriched'
-    '$sites'
-    '$targets'
-    '${fasta_source.fields.path}'
-    '$gff'
-    out/sample
-    --config '$config'
-    --reference '$reference'
-    --gc-correction loess
-    --force
-    --log-file '$log'
-    #if $blast_ratio:
-        --blast-ratio $blast_ratio
-    #end if
-    --min-depth $advanced.min_depth
+# Galaxy stores the BAM index in its metadata directory, not next to the .dat.
+# nasvar requires the .bai alongside the BAM (the v1.1.0 tag does not build
+# the index inline -- that feature was added post-tag).
+ln -sf '$bam' input.bam
+ln -sf '$bam.metadata.bam_index' input.bam.bai
+
+nasvar pipeline \
+    input.bam \
+    '$repeats' \
+    '$enriched' \
+    '$sites' \
+    '$targets' \
+    '${fasta_source.fields.path}' \
+    '$gff' \
+    out/sample \
+    --config '$config' \
+    --reference '$reference' \
+    --gc-correction loess \
+    --force \
+    --log-file '$log' \
+#if $blast_ratio:
+    --blast-ratio $blast_ratio \
+#end if
+    --min-depth $advanced.min_depth \
     --plot-y-percentile $advanced.plot_y_percentile
-    &&
 
-## Guarantee existence of conditional outputs.
-## Several nasvar outputs depend on runtime conditions:
-##  - breakpoints.fa            : only if fusions detected and BAM is indexed
-##  - karyotype.* / coverage.gc_adjusted.tsv : only if enough BAF data
-##  - gc_vs_coverage*.svg       : same
-## from_work_dir requires the file; we guarantee existence (empty = not produced).
-## Written on a single line: Cheetah collapses newlines in <command> CDATA to
-## spaces, so for-loop syntax must use explicit ';' separators.
-for f in out/sample.breakpoints.fa out/sample.coverage.gc_adjusted.tsv out/sample.karyotype.gc_corrected.svg out/sample.karyotype_baf.gc_corrected.svg out/sample.gc_vs_coverage.svg out/sample.gc_vs_coverage.gc_corrected.svg; do test -f "\$f" || touch "\$f"; done &&
+# Guarantee existence of conditional outputs (empty = not produced).
+# Lets from_work_dir succeed and the wrapper run cleanly on samples with
+# insufficient coverage where karyotype/coverage stages are skipped.
+for f in \
+    out/sample.breakpoints.fa \
+    out/sample.coverage.gc_adjusted.tsv \
+    out/sample.karyotype.gc_corrected.svg \
+    out/sample.karyotype_baf.gc_corrected.svg \
+    out/sample.gc_vs_coverage.svg \
+    out/sample.gc_vs_coverage.gc_corrected.svg; do
+    [[ -f "\$f" ]] || touch "\$f"
+done
 
-## Per-gene focal coverage SVGs are data-driven by the pipeline_config JSON
-## (one SVG per "plots" entry) -- neither their count nor their naming is known
-## at wrapper-writing time. We isolate them in focal_plots/ by moving any SVG
-## that is not a named pipeline output; the Galaxy collection then discovers
-## them via discover_datasets.
-## Single-line for the same reason: Cheetah collapses CDATA newlines to spaces.
-for f in out/sample.*.svg; do base=\$(basename "\$f"); case "\$base" in sample.karyotype.gc_corrected.svg|sample.karyotype_baf.gc_corrected.svg|sample.gc_vs_coverage.svg|sample.gc_vs_coverage.gc_corrected.svg|sample.karyotype.svg) ;; *) mv "\$f" out/focal_plots/ ;; esac; done
+# Isolate per-gene focal-depth SVGs (data-driven by pipeline_config) for
+# Galaxy collection discovery. Move anything that is not a named pipeline SVG.
+for f in out/sample.*.svg; do
+    case "\$(basename "\$f")" in
+        sample.karyotype.gc_corrected.svg|\
+        sample.karyotype_baf.gc_corrected.svg|\
+        sample.gc_vs_coverage.svg|\
+        sample.gc_vs_coverage.gc_corrected.svg|\
+        sample.karyotype.svg)
+            ;;
+        *)
+            mv "\$f" out/focal_plots/
+            ;;
+    esac
+done
+]]></configfile>
+    </configfiles>
+
+    <command detect_errors="exit_code"><![CDATA[
+bash '$run_pipeline'
     ]]></command>
 
     <inputs>
