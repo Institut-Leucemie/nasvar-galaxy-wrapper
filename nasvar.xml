@@ -16,8 +16,14 @@
     <command detect_errors="exit_code"><![CDATA[
 mkdir -p out out/focal_plots &&
 
+## Galaxy stores the BAM index in its metadata directory, not next to the .dat.
+## nasvar requires the .bai alongside the BAM (the v1.1.0 tag does not build
+## the index inline -- that feature was added post-tag). We symlink explicitly.
+ln -sf '$bam' input.bam &&
+ln -sf '$bam.metadata.bam_index' input.bam.bai &&
+
 nasvar pipeline
-    '$bam'
+    input.bam
     '$repeats'
     '$enriched'
     '$sites'
@@ -60,7 +66,7 @@ for f in out/sample.*.svg; do base=\$(basename "\$f"); case "\$base" in sample.k
         <!-- ============== per-sample ============== -->
         <param name="bam" type="data" format="bam"
                label="Aligned BAM (tumor)"
-               help="Sorted and indexed BAM/CRAM. Galaxy provides the .bai/.crai index automatically alongside the dataset."/>
+               help="Sorted and indexed BAM."/>
 
         <!-- ============== reference genome (FASTA via all_fasta, other files as data) ============== -->
         <param name="fasta_source" type="select"
