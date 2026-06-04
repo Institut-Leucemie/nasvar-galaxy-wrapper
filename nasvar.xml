@@ -202,10 +202,13 @@ for f in out/sample.*.svg; do base=\$(basename "\$f"); case "\$base" in sample.k
                     <has_text text="CRLF2"/>
                 </assert_contents>
             </output>
-            <!-- The markdown report must name the fusion explicitly -->
+            <!-- The markdown report renders fusions as a table; the literal
+                 form "IGH-CRLF2" appears only in the console aggregate.
+                 Assert on the two partners as they appear in the table rows. -->
             <output name="report_md">
                 <assert_contents>
-                    <has_text text="IGH-CRLF2"/>
+                    <has_text text="IGH (chr14_test"/>
+                    <has_text text="CRLF2 (chrX_test"/>
                 </assert_contents>
             </output>
             <!-- breakpoints.fa not empty (fusion consensus) -->
