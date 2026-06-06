@@ -1,4 +1,4 @@
-<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy1" profile="26.0">
+<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy2" profile="26.0">
     <description>tumor-only long-read variant calling (SNV / CNV / fusions / ITD / karyotype)</description>
 
     <!-- galaxy1: output rationalisation for lab production.
@@ -16,6 +16,12 @@
            designations are the gene/region, not 'sample.<gene>'.
          No change to nasvar itself; all dropped files are still written by the binary,
          simply not harvested. -->
+
+    <!-- galaxy2: hidden="true" on the three tabular tables (coverage, coverage_gc,
+         maf). They stay real outputs (counted, downloadable, workflow-usable) but
+         are masked from the flat history view, as they only serve fine
+         analysis/reanalysis/debugging. Surface them with the 'visible:any'
+         history filter. -->
 
     <macros>
         <token name="@TOOL_VERSION@">1.1.0</token>
@@ -171,13 +177,17 @@ done
               label="${tool.name} on ${on_string}: unified result (JSON)"/>
 
         <!-- ============== quantitative tables ============== -->
-        <data name="coverage" format="tabular"
+        <!-- hidden="true": these tabular tables are only useful for fine
+             analysis/reanalysis/debugging. They remain real outputs (counted,
+             downloadable, usable as workflow inputs) but are masked from the flat
+             history view; surface them with the 'visible:any' history filter. -->
+        <data name="coverage" format="tabular" hidden="true"
               from_work_dir="out/sample.coverage.tsv"
               label="${tool.name} on ${on_string}: coverage"/>
-        <data name="coverage_gc" format="tabular"
+        <data name="coverage_gc" format="tabular" hidden="true"
               from_work_dir="out/sample.coverage.gc_adjusted.tsv"
               label="${tool.name} on ${on_string}: coverage (GC-adjusted)"/>
-        <data name="maf" format="tabular"
+        <data name="maf" format="tabular" hidden="true"
               from_work_dir="out/sample.maf"
               label="${tool.name} on ${on_string}: MAF"/>
 
