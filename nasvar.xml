@@ -29,6 +29,10 @@
         <requirement type="package" version="@TOOL_VERSION@">nasvar</requirement>
     </requirements>
 
+    <command detect_errors="exit_code"><![CDATA[
+bash '$run_pipeline'
+    ]]></command>
+
     <configfiles>
         <configfile name="run_pipeline"><![CDATA[
 #!/usr/bin/env bash
@@ -100,10 +104,6 @@ for f in out/sample.*.svg; do
 done
 ]]></configfile>
     </configfiles>
-
-    <command detect_errors="exit_code"><![CDATA[
-bash '$run_pipeline'
-    ]]></command>
 
     <inputs>
         <!-- ============== per-sample ============== -->
