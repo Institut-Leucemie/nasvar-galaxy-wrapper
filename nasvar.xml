@@ -1,5 +1,21 @@
-<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy0" profile="26.0">
+<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy1" profile="26.0">
     <description>tumor-only long-read variant calling (SNV / CNV / fusions / ITD / karyotype)</description>
+
+    <!-- galaxy1: output rationalisation for lab production.
+         - dropped the 'report_md' output (the HTML report is the markdown rendered,
+           and result.json holds the structured data; markdown was dominated on both axes).
+         - dropped the two karyotype SVG outputs ('karyotype_svg', 'karyotype_baf_svg'):
+           the karyotype+BAF figure is embedded inline in the HTML report and the
+           coverage-only karyotype is a subset of it. Extract from the HTML if a
+           standalone SVG is ever required.
+         - dropped the dedicated 'log' output: nasvar now logs to stderr (env_logger
+           default), captured in the Galaxy job record. detect_errors="exit_code" makes
+           a non-empty stderr harmless.
+         - focal_plots collection: visible="false" (elements no longer also surface as
+           standalone history datasets) and pattern anchored on the 'sample.' prefix so
+           designations are the gene/region, not 'sample.<gene>'.
+         No change to nasvar itself; all dropped files are still written by the binary,
+         simply not harvested. -->
 
     <macros>
         <token name="@TOOL_VERSION@">1.1.0</token>
@@ -27,6 +43,10 @@ mkdir -p out out/focal_plots
 ln -sf '$bam' input.bam
 ln -sf '$bam.metadata.bam_index' input.bam.bai
 
+# No --log-file: nasvar logs to stderr by default (env_logger). The log level is
+# set independently of the target, so dropping --log-file changes only the sink,
+# not the content. Galaxy captures stderr in the job record; with
+# detect_errors="exit_code" a non-empty stderr is not treated as an error.
 nasvar pipeline \
     input.bam \
     '$repeats' \
@@ -40,21 +60,20 @@ nasvar pipeline \
     --reference '$reference' \
     --gc-correction loess \
     --force \
-    --log-file '$log' \
 #if $blast_ratio:
     --blast-ratio $blast_ratio \
 #end if
     --min-depth $advanced.min_depth \
     --plot-y-percentile $advanced.plot_y_percentile
 
-# Guarantee existence of conditional outputs (empty = not produced).
+# Guarantee existence of conditional declared outputs (empty = not produced).
 # Lets from_work_dir succeed and the wrapper run cleanly on samples with
-# insufficient coverage where karyotype/coverage stages are skipped.
+# insufficient coverage where karyotype/coverage stages are skipped. Only files
+# that are still declared outputs are listed here (the karyotype SVGs were
+# dropped as outputs in galaxy1 and so are no longer guaranteed).
 for f in \
     out/sample.breakpoints.fa \
     out/sample.coverage.gc_adjusted.tsv \
-    out/sample.karyotype.gc_corrected.svg \
-    out/sample.karyotype_baf.gc_corrected.svg \
     out/sample.gc_vs_coverage.svg \
     out/sample.gc_vs_coverage.gc_corrected.svg; do
     [[ -f "\$f" ]] || touch "\$f"
@@ -62,6 +81,10 @@ done
 
 # Isolate per-gene focal-depth SVGs (data-driven by pipeline_config) for
 # Galaxy collection discovery. Move anything that is not a named pipeline SVG.
+# IMPORTANT: the karyotype.* SVGs are no longer exposed as outputs, but nasvar
+# still writes them, so they MUST remain in this keep-list -- otherwise they
+# would be swept into the focal_plots collection. They stay in out/ and are
+# discarded with the work directory.
 for f in out/sample.*.svg; do
     case "\$(basename "\$f")" in
         sample.karyotype.gc_corrected.svg|\
@@ -143,9 +166,6 @@ bash '$run_pipeline'
         <data name="report_html" format="html"
               from_work_dir="out/sample.report.html"
               label="${tool.name} on ${on_string}: clinical report (HTML)"/>
-        <data name="report_md" format="markdown"
-              from_work_dir="out/sample.report.md"
-              label="${tool.name} on ${on_string}: clinical report (Markdown)"/>
         <data name="result_json" format="json"
               from_work_dir="out/sample.result.json"
               label="${tool.name} on ${on_string}: unified result (JSON)"/>
@@ -161,13 +181,11 @@ bash '$run_pipeline'
               from_work_dir="out/sample.maf"
               label="${tool.name} on ${on_string}: MAF"/>
 
-        <!-- ============== global plots ============== -->
-        <data name="karyotype_svg" format="svg"
-              from_work_dir="out/sample.karyotype.gc_corrected.svg"
-              label="${tool.name} on ${on_string}: karyotype (GC-corrected)"/>
-        <data name="karyotype_baf_svg" format="svg"
-              from_work_dir="out/sample.karyotype_baf.gc_corrected.svg"
-              label="${tool.name} on ${on_string}: karyotype + BAF"/>
+        <!-- ============== GC-bias diagnostic plots ============== -->
+        <!-- The karyotype and karyotype+BAF SVGs are intentionally NOT exposed:
+             report/mod.rs embeds the karyotype+BAF figure inline in the HTML report
+             (BAF preferred over coverage-only), and the coverage-only karyotype is a
+             subset of it. These GC-bias plots are kept as they are not in the report. -->
         <data name="gc_vs_coverage_svg" format="svg"
               from_work_dir="out/sample.gc_vs_coverage.svg"
               label="${tool.name} on ${on_string}: GC vs coverage"/>
@@ -181,17 +199,17 @@ bash '$run_pipeline'
               label="${tool.name} on ${on_string}: fusion breakpoint consensus (empty if no fusions)"/>
 
         <!-- ============== collection: per-gene focal depth SVGs ============== -->
+        <!-- visible="false": discovered elements live inside the collection only and
+             do not also appear as standalone history datasets. The pattern is anchored
+             on the 'sample.' prefix so the element designation is the gene/region
+             (e.g. chr21_RUNX1_covg), not 'sample.chr21_RUNX1_covg'. -->
         <collection name="focal_plots" type="list"
                     label="${tool.name} on ${on_string}: focal depth plots">
-            <discover_datasets pattern="(?P&lt;designation&gt;.+)\.svg"
+            <discover_datasets pattern="sample\.(?P&lt;designation&gt;.+)\.svg"
                                directory="out/focal_plots"
                                format="svg"
-                               visible="true"/>
+                               visible="false"/>
         </collection>
-
-        <!-- ============== log ============== -->
-        <data name="log" format="txt"
-              label="${tool.name} on ${on_string}: log"/>
     </outputs>
 
     <tests>
@@ -200,8 +218,10 @@ bash '$run_pipeline'
              Coverage/MAF/karyotype outputs are produced as empty files because
              nasvar hardcodes a 1Mb coverage bin_size and a 25% unmasked threshold
              that an 800kb slice cannot meet. Assertions therefore only cover
-             outputs that are structurally produced. -->
-        <test expect_num_outputs="13">
+             outputs that are structurally produced.
+             expect_num_outputs: 8 data + 1 collection = 9 (galaxy1 dropped
+             report_md, karyotype_svg, karyotype_baf_svg, log). -->
+        <test expect_num_outputs="9">
             <param name="bam" value="test.bam" ftype="bam"/>
             <param name="fasta_source" value="t2t_chm13v2_test"/>
             <param name="gff" value="test.gff3" ftype="gff3"/>
@@ -222,10 +242,10 @@ bash '$run_pipeline'
                     <has_text text="CRLF2"/>
                 </assert_contents>
             </output>
-            <!-- The markdown report renders fusions as a table; the literal
-                 form "IGH-CRLF2" appears only in the console aggregate.
-                 Assert on the two partners as they appear in the table rows. -->
-            <output name="report_md">
+            <!-- Report now exposed only as HTML (markdown dropped in galaxy1). The
+                 fusion table renders each partner as "GENE (chrom ~Mbp)" cells;
+                 assert on the two partners in the HTML, as previously on the markdown. -->
+            <output name="report_html">
                 <assert_contents>
                     <has_text text="IGH (chr14_test"/>
                     <has_text text="CRLF2 (chrX_test"/>
@@ -265,10 +285,11 @@ This wrapper was developed for clinical-research use on B-cell acute lymphoblast
 
 **Outputs**
 
-Clinical reports:
+Clinical report:
 
-- ``report.html`` — clinical report (formatted, renders inline in Galaxy)
-- ``report.md`` — clinical report (markdown source, for downstream tooling)
+- ``report.html`` — clinical report (formatted, renders inline in Galaxy). The
+  karyotype+BAF figure is embedded inline in this report; the standalone karyotype
+  SVGs are not exported (extract from the HTML if a separate SVG is needed).
 - ``result.json`` — unified machine-readable output with all calls, QC, and metadata
 
 Quantitative tables:
@@ -276,10 +297,8 @@ Quantitative tables:
 - ``coverage.tsv``, ``coverage.gc_adjusted.tsv`` — binned read depth (raw + GC-corrected)
 - ``maf`` — minor allele frequencies at SNP sites
 
-Global plots:
+GC-bias diagnostic plots:
 
-- ``karyotype.gc_corrected.svg`` — karyotype coverage (GC-corrected)
-- ``karyotype_baf.gc_corrected.svg`` — karyotype + BAF combined view
 - ``gc_vs_coverage.svg``, ``gc_vs_coverage.gc_corrected.svg`` — GC bias diagnostics
 
 Conditional / variable:
@@ -288,7 +307,8 @@ Conditional / variable:
 - **Focal depth plots (collection)** — one SVG per gene declared in the ``plots`` section
   of the pipeline configuration JSON. Number and naming depend on the panel.
 
-- ``log`` — nasvar execution log (dedicated output for clinical archival)
+The nasvar execution log is written to the job's **stderr** (visible in the job details),
+not to a dedicated dataset.
 
 ----
 
