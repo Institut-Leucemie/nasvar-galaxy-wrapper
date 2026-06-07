@@ -1,4 +1,4 @@
-<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy2" profile="26.0">
+<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy3" profile="26.0">
     <description>tumor-only long-read variant calling (SNV / CNV / fusions / ITD / karyotype)</description>
 
     <!-- galaxy1: output rationalisation for lab production.
@@ -23,6 +23,12 @@
          analysis/reanalysis/debugging. Surface them with the 'visible:any'
          history filter. -->
 
+    <!-- galaxy3: stamp the input identity, which nasvar does not record (the report
+         "Run ID" is only basename(out_prefix), and result.json has no input field).
+         Keeping the fixed out/sample prefix, we post-process: (a) rewrite the report's
+         single Run ID line to the input BAM dataset name; (b) prepend an 'input_label'
+         field to result.json (jq, added as a requirement). Name sanitisation deferred. -->
+
     <macros>
         <token name="@TOOL_VERSION@">1.1.0</token>
     </macros>
@@ -33,6 +39,8 @@
              does NOT produce the slice.bam/nasvar.zip/pipeline_config.json outputs
              observed on the post-tag binary /opt/nasvar-v1.1.0/. -->
         <requirement type="package" version="@TOOL_VERSION@">nasvar</requirement>
+        <!-- jq: used only to stamp the input identity into result.json (galaxy3). -->
+        <requirement type="package" version="1.8.1">jq</requirement>
     </requirements>
 
     <command detect_errors="exit_code"><![CDATA[
@@ -76,6 +84,22 @@ nasvar pipeline \
     --min-depth $advanced.min_depth \
     --plot-y-percentile $advanced.plot_y_percentile
 
+# Stamp the input identity. nasvar derives the report's "Run ID" from
+# basename(out_prefix) only, and records nothing about the input in result.json.
+# We keep the fixed out/sample prefix and write the input BAM dataset name into
+# both artifacts. Sanitisation deferred: assumes a clean dataset name (no quotes,
+# no '&' or '|' that would disturb the sed replacement below).
+run_label='$bam.element_identifier'
+
+# (a) Report: rewrite the single Run ID line. "sample" occurs exactly once in the
+# HTML, as this value, so the anchored substitution is unambiguous.
+sed -i "s|<b>Run ID:</b> sample|<b>Run ID:</b> \$run_label|" out/sample.report.html
+
+# (b) result.json: prepend an 'input_label' field. jq --arg is JSON-injection-safe
+# regardless of the label content. Atomic via temp file in the work dir (not /tmp).
+jq --arg input "\$run_label" '{input_label: \$input} + .' out/sample.result.json > out/sample.result.json.tmp \
+    && mv out/sample.result.json.tmp out/sample.result.json
+
 # Guarantee existence of conditional declared outputs (empty = not produced).
 # Lets from_work_dir succeed and the wrapper run cleanly on samples with
 # insufficient coverage where karyotype/coverage stages are skipped. Only files
@@ -115,7 +139,7 @@ done
         <!-- ============== per-sample ============== -->
         <param name="bam" type="data" format="bam"
                label="Aligned BAM (tumor)"
-               help="Sorted and indexed BAM."/>
+               help="Sorted and indexed BAM. The dataset name is written to the report Run ID and to result.json (input_label)."/>
 
         <!-- ============== reference genome (FASTA via all_fasta, other files as data) ============== -->
         <param name="fasta_source" type="select"
@@ -250,6 +274,8 @@ done
                 <assert_contents>
                     <has_text text="&quot;gene0_name&quot;: &quot;IGH&quot;"/>
                     <has_text text="CRLF2"/>
+                    <!-- galaxy3: wrapper-stamped input identity present -->
+                    <has_text text="input_label"/>
                 </assert_contents>
             </output>
             <!-- Report now exposed only as HTML (markdown dropped in galaxy1). The
@@ -259,6 +285,8 @@ done
                 <assert_contents>
                     <has_text text="IGH (chr14_test"/>
                     <has_text text="CRLF2 (chrX_test"/>
+                    <!-- galaxy3: Run ID rewritten away from the literal 'sample' -->
+                    <not_has_text text="&lt;b&gt;Run ID:&lt;/b&gt; sample"/>
                 </assert_contents>
             </output>
             <!-- breakpoints.fa not empty (fusion consensus) -->
@@ -297,10 +325,13 @@ This wrapper was developed for clinical-research use on B-cell acute lymphoblast
 
 Clinical report:
 
-- ``report.html`` — clinical report (formatted, renders inline in Galaxy). The
-  karyotype+BAF figure is embedded inline in this report; the standalone karyotype
-  SVGs are not exported (extract from the HTML if a separate SVG is needed).
-- ``result.json`` — unified machine-readable output with all calls, QC, and metadata
+- ``report.html`` — clinical report (formatted, renders inline in Galaxy). Its "Run ID"
+  shows the input BAM dataset name. The karyotype+BAF figure is embedded inline in this
+  report; the standalone karyotype SVGs are not exported (extract from the HTML if a
+  separate SVG is needed).
+- ``result.json`` — unified machine-readable output with all calls, QC, and metadata.
+  The wrapper prepends an ``input_label`` field (the input BAM dataset name), which
+  nasvar itself does not record.
 
 Quantitative tables:
 
