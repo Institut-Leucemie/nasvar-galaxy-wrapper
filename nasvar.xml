@@ -1,4 +1,4 @@
-<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy4" profile="26.0">
+<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy5" profile="26.0">
     <description>tumor-only long-read variant calling (SNV / CNV / fusions / ITD / karyotype)</description>
 
     <!-- galaxy1: output rationalisation for lab production.
@@ -33,6 +33,11 @@
          'gc_vs_coverage_corrected_svg'), of negligible value in Galaxy. nasvar still
          writes both files, so they stay in the focal_plots keep-list (not swept) but
          are removed from the touch-guard and the <outputs>. expect_num_outputs 9 to 7. -->
+
+    <!-- galaxy5: concise output labels. All output/collection labels switched from
+         "${tool.name} on ${on_string}: ..." to "nasvar on ${bam.element_identifier}: ..."
+         so each dataset is immediately identifiable by the input BAM name rather than
+         the verbose "nasvar pipeline on dataset N-M". -->
 
     <macros>
         <token name="@TOOL_VERSION@">1.1.0</token>
@@ -198,10 +203,10 @@ done
         <!-- ============== main clinical outputs ============== -->
         <data name="report_html" format="html"
               from_work_dir="out/sample.report.html"
-              label="${tool.name} on ${on_string}: clinical report (HTML)"/>
+              label="nasvar on ${bam.element_identifier}: CLINICAL REPORT"/>
         <data name="result_json" format="json"
               from_work_dir="out/sample.result.json"
-              label="${tool.name} on ${on_string}: unified result (JSON)"/>
+              label="nasvar on ${bam.element_identifier}: JSON results"/>
 
         <!-- ============== quantitative tables ============== -->
         <!-- hidden="true": these tabular tables are only useful for fine
@@ -210,13 +215,13 @@ done
              history view; surface them with the 'visible:any' history filter. -->
         <data name="coverage" format="tabular" hidden="true"
               from_work_dir="out/sample.coverage.tsv"
-              label="${tool.name} on ${on_string}: coverage"/>
+              label="nasvar on ${bam.element_identifier}: coverage"/>
         <data name="coverage_gc" format="tabular" hidden="true"
               from_work_dir="out/sample.coverage.gc_adjusted.tsv"
-              label="${tool.name} on ${on_string}: coverage (GC-adjusted)"/>
+              label="nasvar on ${bam.element_identifier}: coverage (GC-adjusted)"/>
         <data name="maf" format="tabular" hidden="true"
               from_work_dir="out/sample.maf"
-              label="${tool.name} on ${on_string}: MAF"/>
+              label="nasvar on ${bam.element_identifier}: MAF"/>
 
         <!-- nasvar also writes karyotype.svg, karyotype.gc_corrected.svg,
              karyotype_baf.gc_corrected.svg (the last embedded inline in the HTML
@@ -226,7 +231,7 @@ done
         <!-- ============== conditional output ============== -->
         <data name="breakpoints_fa" format="fasta"
               from_work_dir="out/sample.breakpoints.fa"
-              label="${tool.name} on ${on_string}: fusion breakpoint consensus (empty if no fusions)"/>
+              label="nasvar on ${bam.element_identifier}: fusion breakpoint consensus"/>
 
         <!-- ============== collection: per-gene focal depth SVGs ============== -->
         <!-- visible="false": discovered elements live inside the collection only and
@@ -234,7 +239,7 @@ done
              on the 'sample.' prefix so the element designation is the gene/region
              (e.g. chr21_RUNX1_covg), not 'sample.chr21_RUNX1_covg'. -->
         <collection name="focal_plots" type="list"
-                    label="${tool.name} on ${on_string}: focal depth plots">
+                    label="nasvar on ${bam.element_identifier}: focal depth plots">
             <discover_datasets pattern="sample\.(?P&lt;designation&gt;.+)\.svg"
                                directory="out/focal_plots"
                                format="svg"
