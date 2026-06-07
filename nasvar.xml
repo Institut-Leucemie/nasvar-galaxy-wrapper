@@ -1,4 +1,4 @@
-<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy3" profile="26.0">
+<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy4" profile="26.0">
     <description>tumor-only long-read variant calling (SNV / CNV / fusions / ITD / karyotype)</description>
 
     <!-- galaxy1: output rationalisation for lab production.
@@ -28,6 +28,11 @@
          Keeping the fixed out/sample prefix, we post-process: (a) rewrite the report's
          single Run ID line to the input BAM dataset name; (b) prepend an 'input_label'
          field to result.json (jq, added as a requirement). Name sanitisation deferred. -->
+
+    <!-- galaxy4: dropped the two GC-bias diagnostic SVG outputs ('gc_vs_coverage_svg',
+         'gc_vs_coverage_corrected_svg'), of negligible value in Galaxy. nasvar still
+         writes both files, so they stay in the focal_plots keep-list (not swept) but
+         are removed from the touch-guard and the <outputs>. expect_num_outputs 9 to 7. -->
 
     <macros>
         <token name="@TOOL_VERSION@">1.1.0</token>
@@ -103,22 +108,20 @@ jq --arg input "\$run_label" '{input_label: \$input} + .' out/sample.result.json
 # Guarantee existence of conditional declared outputs (empty = not produced).
 # Lets from_work_dir succeed and the wrapper run cleanly on samples with
 # insufficient coverage where karyotype/coverage stages are skipped. Only files
-# that are still declared outputs are listed here (the karyotype SVGs were
-# dropped as outputs in galaxy1 and so are no longer guaranteed).
+# that are still declared outputs are listed here (the karyotype SVGs were dropped
+# in galaxy1 and the gc_vs_coverage SVGs in galaxy4, so neither is guaranteed).
 for f in \
     out/sample.breakpoints.fa \
-    out/sample.coverage.gc_adjusted.tsv \
-    out/sample.gc_vs_coverage.svg \
-    out/sample.gc_vs_coverage.gc_corrected.svg; do
+    out/sample.coverage.gc_adjusted.tsv; do
     [[ -f "\$f" ]] || touch "\$f"
 done
 
 # Isolate per-gene focal-depth SVGs (data-driven by pipeline_config) for
 # Galaxy collection discovery. Move anything that is not a named pipeline SVG.
-# IMPORTANT: the karyotype.* SVGs are no longer exposed as outputs, but nasvar
-# still writes them, so they MUST remain in this keep-list -- otherwise they
-# would be swept into the focal_plots collection. They stay in out/ and are
-# discarded with the work directory.
+# IMPORTANT: the karyotype.* and gc_vs_coverage.* SVGs are no longer exposed as
+# outputs, but nasvar still writes them, so they MUST remain in this keep-list --
+# otherwise they would be swept into the focal_plots collection. They stay in
+# out/ and are discarded with the work directory.
 for f in out/sample.*.svg; do
     case "\$(basename "\$f")" in
         sample.karyotype.gc_corrected.svg|\
@@ -215,17 +218,10 @@ done
               from_work_dir="out/sample.maf"
               label="${tool.name} on ${on_string}: MAF"/>
 
-        <!-- ============== GC-bias diagnostic plots ============== -->
-        <!-- The karyotype and karyotype+BAF SVGs are intentionally NOT exposed:
-             report/mod.rs embeds the karyotype+BAF figure inline in the HTML report
-             (BAF preferred over coverage-only), and the coverage-only karyotype is a
-             subset of it. These GC-bias plots are kept as they are not in the report. -->
-        <data name="gc_vs_coverage_svg" format="svg"
-              from_work_dir="out/sample.gc_vs_coverage.svg"
-              label="${tool.name} on ${on_string}: GC vs coverage"/>
-        <data name="gc_vs_coverage_corrected_svg" format="svg"
-              from_work_dir="out/sample.gc_vs_coverage.gc_corrected.svg"
-              label="${tool.name} on ${on_string}: GC vs coverage (corrected)"/>
+        <!-- nasvar also writes karyotype.svg, karyotype.gc_corrected.svg,
+             karyotype_baf.gc_corrected.svg (the last embedded inline in the HTML
+             report) and gc_vs_coverage[.gc_corrected].svg (GC-bias diagnostics,
+             dropped in galaxy4 as near-useless in Galaxy). None are exposed. -->
 
         <!-- ============== conditional output ============== -->
         <data name="breakpoints_fa" format="fasta"
@@ -253,9 +249,9 @@ done
              nasvar hardcodes a 1Mb coverage bin_size and a 25% unmasked threshold
              that an 800kb slice cannot meet. Assertions therefore only cover
              outputs that are structurally produced.
-             expect_num_outputs: 8 data + 1 collection = 9 (galaxy1 dropped
-             report_md, karyotype_svg, karyotype_baf_svg, log). -->
-        <test expect_num_outputs="9">
+             expect_num_outputs: 6 data + 1 collection = 7 (galaxy1 dropped report_md,
+             karyotype_svg, karyotype_baf_svg, log; galaxy4 dropped the 2 gc_vs_coverage SVGs). -->
+        <test expect_num_outputs="7">
             <param name="bam" value="test.bam" ftype="bam"/>
             <param name="fasta_source" value="t2t_chm13v2_test"/>
             <param name="gff" value="test.gff3" ftype="gff3"/>
@@ -337,10 +333,6 @@ Quantitative tables:
 
 - ``coverage.tsv``, ``coverage.gc_adjusted.tsv`` — binned read depth (raw + GC-corrected)
 - ``maf`` — minor allele frequencies at SNP sites
-
-GC-bias diagnostic plots:
-
-- ``gc_vs_coverage.svg``, ``gc_vs_coverage.gc_corrected.svg`` — GC bias diagnostics
 
 Conditional / variable:
 
