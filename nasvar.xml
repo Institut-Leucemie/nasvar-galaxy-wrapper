@@ -1,4 +1,4 @@
-<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy5" profile="26.0">
+<tool id="nasvar_pipeline" name="nasvar pipeline" version="@TOOL_VERSION@+galaxy0" profile="26.0">
     <description>tumor-only long-read variant calling (SNV / CNV / fusions / ITD / karyotype)</description>
 
     <!-- galaxy1: output rationalisation for lab production.
@@ -39,15 +39,27 @@
          so each dataset is immediately identifiable by the input BAM name rather than
          the verbose "nasvar pipeline on dataset N-M". -->
 
+    <!-- 1.2.0+galaxy0: upgrade to nasvar 1.2.0 (tag v1.2.0, commit f781bfc).
+         - nasvar 1.2.0 writes the focal-depth plots and the diagnostic SVGs only
+           with the global 'debug' flag; the flag is now passed so that the
+           focal_plots collection is still populated. Calls are unchanged by it.
+         - dropped the 'coverage_gc' output: nasvar 1.2.0 no longer writes
+           coverage.gc_adjusted.tsv; the GC-adjusted counts are the 6th column
+           (n_reads_gc_adj) of coverage.tsv. expect_num_outputs 7 to 6.
+         - the reference configuration JSON must now carry a 'contigs' list
+           (name + accession per chromosome); nasvar 1.2.0 refuses a file without it.
+         - nasvar 1.2.0 also writes slice.bam(.bai), slice.fa.gz(.fai),
+           pipeline_config.json, coverage_100k.bin and a nasvar.zip bundle of all
+           outputs. None is exposed; they are discarded with the work directory. -->
+
     <macros>
-        <token name="@TOOL_VERSION@">1.1.0</token>
+        <token name="@TOOL_VERSION@">1.2.0</token>
     </macros>
 
     <requirements>
         <!-- Resolved via the local conda channel on usegalaxy (conda_use_local: true).
-             The conda binary is built from the v1.1.0 tag (commit eb28544), so it
-             does NOT produce the slice.bam/nasvar.zip/pipeline_config.json outputs
-             observed on the post-tag binary /opt/nasvar-v1.1.0/. -->
+             The conda binary is built from the v1.2.0 tag (commit f781bfc) with the
+             recipe in Institut-Leucemie/nasvar-conda. -->
         <requirement type="package" version="@TOOL_VERSION@">nasvar</requirement>
         <!-- jq: used only to stamp the input identity into result.json (galaxy3). -->
         <requirement type="package" version="1.8.1">jq</requirement>
@@ -66,8 +78,8 @@ shopt -s nullglob
 mkdir -p out out/focal_plots
 
 # Galaxy stores the BAM index in its metadata directory, not next to the .dat.
-# nasvar requires the .bai alongside the BAM (the v1.1.0 tag does not build
-# the index inline -- that feature was added post-tag).
+# nasvar looks for the .bai alongside the BAM; linking Galaxy's index there
+# avoids nasvar 1.2.0 rebuilding one inline.
 ln -sf '$bam' input.bam
 ln -sf '$bam.metadata.bam_index' input.bam.bai
 
@@ -75,7 +87,9 @@ ln -sf '$bam.metadata.bam_index' input.bam.bai
 # set independently of the target, so dropping --log-file changes only the sink,
 # not the content. Galaxy captures stderr in the job record; with
 # detect_errors="exit_code" a non-empty stderr is not treated as an error.
-nasvar pipeline \
+# --debug: since nasvar 1.2.0 the focal-depth plots (and the diagnostic SVGs) are
+# only written with this flag. It does not change the calls or the log level.
+nasvar --debug pipeline \
     input.bam \
     '$repeats' \
     '$enriched' \
@@ -116,8 +130,7 @@ jq --arg input "\$run_label" '{input_label: \$input} + .' out/sample.result.json
 # that are still declared outputs are listed here (the karyotype SVGs were dropped
 # in galaxy1 and the gc_vs_coverage SVGs in galaxy4, so neither is guaranteed).
 for f in \
-    out/sample.breakpoints.fa \
-    out/sample.coverage.gc_adjusted.tsv; do
+    out/sample.breakpoints.fa; do
     [[ -f "\$f" ]] || touch "\$f"
 done
 
@@ -169,7 +182,7 @@ done
                help="Tab-separated SNP positions for BAF: CHR POS REF ALT."/>
         <param name="reference" type="data" format="json"
                label="Reference genome configuration (JSON)"
-               help="Centromere and PAR coordinates for the chosen reference genome (e.g. T2T-CHM13v2.0)."/>
+               help="Contig list, centromere and PAR coordinates for the chosen reference genome (e.g. T2T-CHM13v2.0). Since nasvar 1.2.0 the file must contain a 'contigs' list; a reference JSON written for nasvar 1.1.0 is rejected."/>
 
         <!-- ============== panel ============== -->
         <param name="enriched" type="data" format="bed"
@@ -216,9 +229,6 @@ done
         <data name="coverage" format="tabular" hidden="true"
               from_work_dir="out/sample.coverage.tsv"
               label="nasvar on ${bam.element_identifier}: coverage"/>
-        <data name="coverage_gc" format="tabular" hidden="true"
-              from_work_dir="out/sample.coverage.gc_adjusted.tsv"
-              label="nasvar on ${bam.element_identifier}: coverage (GC-adjusted)"/>
         <data name="maf" format="tabular" hidden="true"
               from_work_dir="out/sample.maf"
               label="nasvar on ${bam.element_identifier}: MAF"/>
@@ -254,9 +264,10 @@ done
              nasvar hardcodes a 1Mb coverage bin_size and a 25% unmasked threshold
              that an 800kb slice cannot meet. Assertions therefore only cover
              outputs that are structurally produced.
-             expect_num_outputs: 6 data + 1 collection = 7 (galaxy1 dropped report_md,
-             karyotype_svg, karyotype_baf_svg, log; galaxy4 dropped the 2 gc_vs_coverage SVGs). -->
-        <test expect_num_outputs="7">
+             expect_num_outputs: 5 data + 1 collection = 6 (galaxy1 dropped report_md,
+             karyotype_svg, karyotype_baf_svg, log; galaxy4 dropped the 2 gc_vs_coverage SVGs;
+             1.2.0+galaxy0 dropped coverage_gc). -->
+        <test expect_num_outputs="6">
             <param name="bam" value="test.bam" ftype="bam"/>
             <param name="fasta_source" value="t2t_chm13v2_test"/>
             <param name="gff" value="test.gff3" ftype="gff3"/>
@@ -296,7 +307,13 @@ done
                     <has_n_lines min="2"/>
                 </assert_contents>
             </output>
-            <!-- 1 focal plot generated (chrX_test PAR1 covg) -->
+            <!-- coverage.tsv carries the 6-column header of nasvar 1.2.0 -->
+            <output name="coverage">
+                <assert_contents>
+                    <has_text text="n_reads_gc_adj"/>
+                </assert_contents>
+            </output>
+            <!-- 1 focal plot generated (chrX_test PAR1 covg); requires the debug flag since 1.2.0 -->
             <output_collection name="focal_plots" count="1"/>
         </test>
     </tests>
@@ -318,7 +335,8 @@ This wrapper was developed for clinical-research use on B-cell acute lymphoblast
 - **Per-sample**: aligned tumor BAM.
 - **Reference-genome bundle**: FASTA (admin-installed, via all_fasta), GFF3, repeats BED,
   MAF sites TSV, reference JSON. All five must describe the *same* reference genome —
-  mismatch will silently produce wrong calls.
+  mismatch will silently produce wrong calls. The reference JSON must contain the
+  ``contigs`` list introduced in nasvar 1.2.0.
 - **Panel bundle**: enriched BED, targets BED, pipeline JSON. All three must describe the
   *same* analysis panel.
 
@@ -336,7 +354,8 @@ Clinical report:
 
 Quantitative tables:
 
-- ``coverage.tsv``, ``coverage.gc_adjusted.tsv`` — binned read depth (raw + GC-corrected)
+- ``coverage.tsv`` — binned read depth; raw counts in ``n_reads``, GC-corrected counts in
+  ``n_reads_gc_adj`` (``NA`` when no correction was computed)
 - ``maf`` — minor allele frequencies at SNP sites
 
 Conditional / variable:
@@ -352,12 +371,12 @@ not to a dedicated dataset.
 
 **Provenance**
 
-This Galaxy wrapper resolves ``nasvar 1.1.0`` from the local conda channel, which is
-built from the upstream GitHub tag ``v1.1.0`` (commit
-``eb285440957124d1d3c65aee0ba0aa291726313a``, source tarball sha256
-``6bdf329766a2d1fe6ae40006d02dd7f827e8f6c057df72e443348e1906ab7a37``).
+This Galaxy wrapper resolves ``nasvar 1.2.0`` from the local conda channel, which is
+built from the upstream GitHub tag ``v1.2.0`` (commit
+``f781bfca0216e1bbc354c2600733e3b13638d82c``) with the recipe in
+https://github.com/Institut-Leucemie/nasvar-conda.
 
-The clinical version cited in patient reports should be ``nasvar 1.1.0`` (tag), not any
+The clinical version cited in patient reports should be ``nasvar 1.2.0`` (tag), not any
 locally-compiled binary post-tag.
 
 **Upstream**
@@ -375,7 +394,7 @@ UNC Ref. 24-0059 Non-commercial. See the LICENSE file in the upstream repository
   author       = {Zhao, Acacia and Wang, Jeremy},
   title        = {nasvar: Nanopore Adaptive Sample VARiant caller},
   howpublished = {\url{https://github.com/jwanglab/nasvar}},
-  note         = {Version 1.1.0, tag eb285440957124d1d3c65aee0ba0aa291726313a}
+  note         = {Version 1.2.0, commit f781bfca0216e1bbc354c2600733e3b13638d82c}
 }
         </citation>
     </citations>
