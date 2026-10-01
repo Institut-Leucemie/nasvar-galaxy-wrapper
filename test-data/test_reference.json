@@ -1,5 +1,15 @@
 {
   "name": "T2T-CHM13v2.0_test_slice",
+  "contigs": [
+    {
+      "name": "chr14_test",
+      "accession": "NC_060938.1_test"
+    },
+    {
+      "name": "chrX_test",
+      "accession": "NC_060947.1_test"
+    }
+  ],
   "centromeres": {},
   "par1": {},
   "par2": {}
